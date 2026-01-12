@@ -1,21 +1,17 @@
 # Chemical Molecules API
 
-Проект для хранения и поиска химических молекул с использованием RDKit.
-
-# 🧪 Chemical Molecules API
-
-![CI/CD Status](https://github.com/ТВОЙ_USERNAME/chem-project/actions/workflows/ci-cd.yml/badge.svg)
+![CI/CD Status](https://github.com/chebotarreva/chem-project/actions/workflows/ci-cd.yml/badge.svg)
 ![Python Version](https://img.shields.io/badge/python-3.11-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.104-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
 
 API для хранения и поиска химических молекул с использованием RDKit, FastAPI, PostgreSQL, Redis, Docker, и Celery.
 
-## 🚀 Быстрый старт
+Запуск проекта:
 
 ```bash
 # Клонирование репозитория
-git clone https://github.com/ТВОЙ_USERNAME/chem-project.git
+git clone https://github.com/chebotarreva/chem-project.git
 cd chem-project
 
 # Запуск с Docker Compose
