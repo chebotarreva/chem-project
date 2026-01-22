@@ -5,19 +5,21 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.104-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-orange.svg)
 
-API для хранения и поиска химических молекул с использованием RDKit, FastAPI, PostgreSQL, Redis, Docker, и Celery.
+Это API для хранения и поиска химических соединений с использованием RDKit, FastAPI, PostgreSQL, Redis, Docker и Celery.
 
-Запуск проекта:
+Как запустить проект?
 
 ```bash
-# Клонирование репозитория
+# клонировать репозиторий:
 git clone https://github.com/chebotarreva/chem-project.git
 cd chem-project
 
-# Запуск с Docker Compose
+# запустить всё с Docker:
 docker-compose up -d
 
-# Приложение будет доступно по адресу:
-# - API: http://localhost
+# веб-приложение будет доступно по адресу:
+# http://localhost
+
+# может пригодиться:
 # - Документация: http://localhost/docs
 # - Мониторинг задач: http://localhost:5555
