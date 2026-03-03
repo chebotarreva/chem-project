@@ -17,25 +17,23 @@ from src.config import settings
 from src.db.session import get_db
 from src.redis_cache import cache, invalidate_cache
 
-# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Создаем приложение FastAPI
 app = FastAPI(
     title=settings.PROJECT_NAME, description="API для хранения и поиска химических молекул", version=settings.VERSION
 )
 
-# --- Вспомогательные функции для кеширования ---
+# --- вспомогательные функции для кеширования ---
 
 
 def get_cache_key(substructure: str) -> str:
-    """Создает ключ для кеша на основе субструктуры"""
+    """создает ключ для кеша на основе субструктуры"""
     return f"search:{substructure}"
 
 
 async def get_cached_search(substructure: str):
-    """Получить результат поиска из кеша"""
+    """получить результат поиска из кеша"""
     try:
         key = get_cache_key(substructure)
         cached = cache.get(key)
@@ -45,7 +43,7 @@ async def get_cached_search(substructure: str):
             result["cached"] = True
             return result
     except Exception as e:
-        logger.warning(f"Ошибка чтения кеша: {e}")
+        logger.warning(f"ОШИБКА чтения кеша: {e}")
     return None
 
 
@@ -63,7 +61,7 @@ async def save_to_cache(substructure: str, result: dict, ttl: int = 3600):
         cache.setex(key, ttl, json.dumps(data_to_cache))
         logger.info(f"Сохранен кеш для {substructure}")
     except Exception as e:
-        logger.warning(f"Ошибка сохранения кеша: {e}")
+        logger.warning(f"ОШИБКА сохранения кеша: {e}")
 
 
 # ==================== КОРНЕВОЙ ЭНДПОИНТ ====================
@@ -71,7 +69,7 @@ async def save_to_cache(substructure: str, result: dict, ttl: int = 3600):
 
 @app.get("/")
 async def root():
-    """Корневой эндпоинт - информация о API"""
+    """корневой эндпоинт. информация об API"""
     return {
         "message": "Добро пожаловать в Chemical Molecules API!",
         "version": settings.VERSION,
@@ -96,7 +94,7 @@ async def root():
     summary="Добавить новую молекулу"
 )
 async def create_molecule(molecule: MoleculeCreate, db: Session = Depends(get_db)):
-    """Добавить новую молекулу в базу данных"""
+    """добавить новую молекулу в БД"""
     from src.db.models import Molecule  # Явный импорт
 
     try:
@@ -110,23 +108,22 @@ async def create_molecule(molecule: MoleculeCreate, db: Session = Depends(get_db
         db.refresh(db_molecule)
         logger.info(f"Создана молекула: id={db_molecule.id}, name={db_molecule.name}")
 
-        # Инвалидируем кеш
         invalidate_cache("search:*")
 
         return db_molecule
     except Exception as e:
-        logger.error(f"Ошибка создания молекулы: {e}")
+        logger.error(f"ОШИБКА создания молекулы: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/molecules/{molecule_id}", response_model=MoleculeResponse, summary="Получить молекулу по ID")
 async def read_molecule(molecule_id: int, db: Session = Depends(get_db)):
-    """Получить информацию о молекуле по её идентификатору"""
+    """получить информацию о молекуле по её идентификатору"""
     db_manager = DatabaseManager(db)
     molecule = db_manager.get_molecule_by_id(molecule_id)
 
     if molecule is None:
-        raise HTTPException(status_code=404, detail=f"Молекула с id={molecule_id} не найдена")
+        raise HTTPException(status_code=404, detail=f"ОШИБКА! Молекула с id={molecule_id} не найдена")
 
     return molecule
 
@@ -134,9 +131,6 @@ async def read_molecule(molecule_id: int, db: Session = Depends(get_db)):
 @app.put("/molecules/{molecule_id}", response_model=MoleculeResponse, summary="Обновить молекулу")
 async def update_molecule(molecule_id: int, molecule: MoleculeCreate, db: Session = Depends(get_db)):
     """Обновить информацию о молекуле"""
-    # УДАЛИ проверку на соответствие ID - в MoleculeCreate его больше нет
-    # if molecule_id != molecule.id:
-    #     raise HTTPException(status_code=400, detail="ID в пути и теле запроса не совпадают")
 
     db_manager = DatabaseManager(db)
     updated = db_manager.update_molecule(molecule_id, molecule)
@@ -151,13 +145,12 @@ async def update_molecule(molecule_id: int, molecule: MoleculeCreate, db: Sessio
 
 @app.delete("/molecules/{molecule_id}", summary="Удалить молекулу")
 async def delete_molecule(molecule_id: int, db: Session = Depends(get_db)):
-    """Удалить молекулу из базы данных"""
+    """удалить молекулу из БД"""
     db_manager = DatabaseManager(db)
 
     if db_manager.delete_molecule(molecule_id):
         logger.info(f"Удалена молекула: id={molecule_id}")
 
-        # Инвалидируем кеш поиска при удалении молекулы
         invalidate_cache("search:*")
 
         return JSONResponse(status_code=200, content={"message": f"Молекула с id={molecule_id} удалена"})
@@ -175,14 +168,11 @@ async def list_molecules(
     """Получить список молекул с пагинацией"""
     db_manager = DatabaseManager(db)
 
-    # Рассчитываем смещение
     skip = (page - 1) * page_size
 
-    # Получаем молекулы
     molecules = db_manager.get_all_molecules(skip, page_size, search)
     total = db_manager.count_molecules()
 
-    # Рассчитываем общее количество страниц
     total_pages = (total + page_size - 1) // page_size if page_size > 0 else 0
 
     return MoleculesList(molecules=molecules, total=total, page=page, page_size=page_size, total_pages=total_pages)
@@ -195,14 +185,11 @@ async def list_molecules(
 async def search_substructure(request: SearchRequest, db: Session = Depends(get_db)):
     """Поиск молекул, содержащих заданную субструктуру (с простым кешированием)"""
 
-    # 1. Пробуем взять из кеша
     cached_result = await get_cached_search(request.substructure)
     if cached_result:
         return cached_result
 
-    # 2. Если нет в кеше - выполняем поиск
     try:
-        # Пробуем импортировать функцию поиска
         try:
             from src.main import substructure_search
 
@@ -213,18 +200,15 @@ async def search_substructure(request: SearchRequest, db: Session = Depends(get_
 
         db_manager = DatabaseManager(db)
 
-        # Получаем все SMILES из базы
+        # все SMILES из базы
         all_molecules = db_manager.get_all_molecules(skip=0, limit=db_manager.count_molecules())
         smiles_list = [mol.smiles for mol in all_molecules]
 
         if use_real_search:
-            # Используем функцию из этапа 1
             found_smiles = substructure_search(smiles_list, request.substructure)
         else:
-            # Упрощенный поиск
             found_smiles = [smiles for smiles in smiles_list if request.substructure in smiles]
 
-        # Находим полные данные молекул
         results = [mol for mol in all_molecules if mol.smiles in found_smiles]
 
         logger.info(f"Выполнен поиск: субструктура={request.substructure}, найдено={len(results)}")
@@ -237,14 +221,13 @@ async def search_substructure(request: SearchRequest, db: Session = Depends(get_
             "cached": False,
         }
 
-        # 3. Сохраняем в кеш для будущих запросов
         await save_to_cache(request.substructure, result_data)
 
         return result_data
 
     except Exception as e:
-        logger.error(f"Ошибка поиска: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Ошибка при выполнении поиска: {str(e)}")
+        logger.error(f"ОШИБКА поиска: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"ОШИБКА при выполнении поиска: {str(e)}")
 
 
 # ==================== CELERY ЗАДАЧИ ====================
@@ -253,10 +236,10 @@ async def search_substructure(request: SearchRequest, db: Session = Depends(get_
 @app.post("/tasks/search/async")
 async def start_async_search(request: SearchRequest):
     """
-    Запуск асинхронного поиска по субструктуре
+    запуск асинхронного поиска по субструктуре
     """
     try:
-        # Запускаем задачу Celery
+        # запуск задачи сelery
         task = substructure_search_task.delay(request.substructure)
 
         logger.info(f"Запущена асинхронная задача поиска. Task ID: {task.id}")
@@ -270,14 +253,14 @@ async def start_async_search(request: SearchRequest):
         }
 
     except Exception as e:
-        logger.error(f"Ошибка запуска задачи: {e}")
-        raise HTTPException(status_code=500, detail=f"Ошибка запуска асинхронного поиска: {str(e)}")
+        logger.error(f"ОШИБКА запуска задачи: {e}")
+        raise HTTPException(status_code=500, detail=f"ОШИБКА запуска асинхронного поиска: {str(e)}")
 
 
 @app.get("/tasks/{task_id}/status")
 async def get_task_status(task_id: str):
     """
-    Получение статуса задачи
+    статус задачи
     """
     try:
         task_result = AsyncResult(task_id, app=celery_app)
@@ -287,7 +270,7 @@ async def get_task_status(task_id: str):
             "status": task_result.status,
         }
 
-        # Если задача в процессе, добавляем информацию о прогрессе
+        # если еще в процессе, отображается статус прогресса
         if task_result.status == "PROGRESS":
             response.update(task_result.info or {})
         elif task_result.status == "SUCCESS":
@@ -300,13 +283,13 @@ async def get_task_status(task_id: str):
 
     except Exception as e:
         logger.error(f"Ошибка получения статуса задачи {task_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Ошибка получения статуса задачи: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"ОШИБКА получения статуса задачи: {str(e)}")
 
 
 @app.get("/tasks/{task_id}/result")
 async def get_task_result(task_id: str):
     """
-    Получение результата задачи (если готова)
+    получение результата задачи (если готова)
     """
     try:
         task_result = AsyncResult(task_id, app=celery_app)
@@ -327,8 +310,8 @@ async def get_task_result(task_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка получения результата задачи {task_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Ошибка получения результата задачи: {str(e)}")
+        logger.error(f"ОШИБКА получения результата задачи {task_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"ОШИБКА получения результата задачи: {str(e)}")
 
 
 @app.post("/tasks/test")
@@ -347,8 +330,8 @@ async def start_test_task(duration: int = Query(5, ge=1, le=60)):
         }
 
     except Exception as e:
-        logger.error(f"Ошибка запуска тестовой задачи: {e}")
-        raise HTTPException(status_code=500, detail=f"Ошибка запуска тестовой задачи: {str(e)}")
+        logger.error(f"ОШИБКА запуска тестовой задачи: {e}")
+        raise HTTPException(status_code=500, detail=f"ОШИБКА запуска тестовой задачи: {str(e)}")
 
 
 @app.get("/tasks")
@@ -357,8 +340,6 @@ async def list_tasks(limit: int = Query(10, ge=1, le=100)):
     Получение списка последних задач
     """
     try:
-        # Эта функция требует настройки Redis для хранения истории задач
-        # Пока возвращаем заглушку
         return {
             "message": "Список задач пока недоступен",
             "note": "Для просмотра задач используйте Flower на порту 5555",
@@ -382,7 +363,6 @@ async def health_check(db: Session = Depends(get_db)):
     redis_status = "unknown"
     celery_status = "unknown"
 
-    # Проверяем PostgreSQL
     try:
         db.execute(text("SELECT 1"))
         db_status = "connected"
@@ -390,13 +370,10 @@ async def health_check(db: Session = Depends(get_db)):
         logger.error(f"Database health check failed: {e}")
         db_status = f"disconnected: {str(e)}"
 
-    # Проверяем Redis
     redis_healthy = cache.health_check()
     redis_status = "connected" if redis_healthy else "disconnected"
 
-    # Проверяем Celery
     try:
-        # Пробуем отправить тестовый ping в Celery
         result = celery_app.control.ping(timeout=2)
         if result:
             celery_status = "connected"
@@ -406,7 +383,6 @@ async def health_check(db: Session = Depends(get_db)):
         logger.error(f"Celery health check failed: {e}")
         celery_status = f"disconnected: {str(e)}"
 
-    # Определяем общий статус
     overall_status = (
         "healthy"
         if all([db_status == "connected", redis_status == "connected", celery_status == "connected"])
@@ -440,7 +416,7 @@ async def get_cache_stats():
             "hit_rate": (info.get("keyspace_hits", 0) / max(info.get("keyspace_hits", 0) + info.get("keyspace_misses", 0), 1)),
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка получения статистики: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"ОШИБКА получения статистики: {str(e)}")
 
 
 @app.delete("/cache/clear")
@@ -471,22 +447,20 @@ async def clear_search_cache():
 
 @app.get("/cache/test")
 async def cache_test():
-    """Тест работы кеширования"""
+    """тест работы кеширования"""
     import time
 
     from src.redis_cache import cache, cached
 
     @cached(ttl=10, key_prefix="test")
     def slow_function(x):
-        time.sleep(1)  # Имитируем долгую операцию
+        time.sleep(1)
         return {"result": x * 2, "timestamp": time.time()}
 
-    # Первый вызов - должен быть медленным
     start = time.time()
     result1 = slow_function(21)
     time1 = time.time() - start
 
-    # Второй вызов - должен быть быстрым (из кеша)
     start = time.time()
     result2 = slow_function(21)
     time2 = time.time() - start
