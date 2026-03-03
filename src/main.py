@@ -13,22 +13,22 @@ def substructure_search(molecules: List[str], substructure: str) -> List[str]:
         список SMILES, содержащих субструктуру
     """
 
-    # 1. прасинг субструктуры (Создаем объект субструктуры)
+    # 1. прасинг субструктуры 
     sub_mol = Chem.MolFromSmiles(substructure)
     if sub_mol is None:
         raise ValueError(f"Некорректный SMILES субструктуры: {substructure}")
 
     results = []
 
-    # 2. Проверяем каждую молекулу
+    # 2. проверка каждой молекулы
     for smiles in molecules:
-        # Создаем объект молекулы
+        # создадим объект молекулы
         mol = Chem.MolFromSmiles(smiles)
         if mol is None:
-            print(f"Пропускаем некорректный SMILES: {smiles}")
+            print(f"Пропустим некорректный SMILES: {smiles}")
             continue
 
-        # 3. Проверяем наличие субструктуры
+        # 3. проверка наличия субструктуры
         if mol.HasSubstructMatch(sub_mol):
             results.append(smiles)
 
