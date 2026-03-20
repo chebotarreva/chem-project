@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:   # Список всех сервисов (контейнеров), которые нужно запустить
+  # 1. База данных PostgreSQL
+  postgres:
+    image: postgres:15   # какой образ Docker использовать
+
+    container_name: chem_postgres
+    environment:   # переменные окружения (логин/пароль/база)
+      POSTGRES_USER: chem_user
+      POSTGRES_PASSWORD: chem_password
+      POSTGRES_DB: chem_database
+    ports:   # проброс портов (хост:контейнер)
+      - "5432:5432"  # внешний:внутренний порт
+    volumes:   # сохранение данных после перезапуска
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chem_user -d chem_database"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. Redis (для кеша, пока не используется, но добавим, тк пригодится на 5 этапе)
+  redis:
+    image: redis:7-alpine
+    container_name: chem_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+ # 3. НАШ БЭКЕНД НА FASTAPI
+  backend:
+    build: .  # Собираем образ из Dockerfile в текущей директории
+    container_name: chem_backend
+    ports:
+      - "8000"  # Пробрасываем порт 8000 на хост
+    volumes:
+      - ./src:/app/src  # Монтируем код для hot-reload
+      - ./alembic:/app/alembic
+      - ./.env:/app/.env
+    depends_on:
+      postgres:
+        condition: service_healthy  # Ждем, пока БД станет доступна
+      redis:
+        condition: service_started
+    environment:
+      - DATABASE_URL=postgresql://chem_user:chem_password@postgres:5432/chem_database
+      - REDIS_URL=redis://redis:6379/0
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  celery_worker:
+    build: .
+    command: >
+      sh -c "sleep 5 &&
+             celery -A src.celery_app worker --loglevel=info --concurrency=2 -Q search,default"
+    volumes:
+      - ./src:/app/src
+      - ./.env:/app/.env
+    depends_on:
+      - redis
+      - postgres
+      - backend
+    environment:
+      - DATABASE_URL=postgresql://chem_user:chem_password@postgres:5432/chem_database
+      - REDIS_URL=redis://redis:6379/0
+    networks:
+      - default
+    restart: unless-stopped
+
+  flower:
+    build: .
+    command: >
+      sh -c "sleep 10 &&
+             celery -A src.celery_app flower --port=5555 --broker=${REDIS_URL}"
+    ports:
+      - "5555:5555"
+    volumes:
+      - ./src:/app/src
+      - ./.env:/app/.env
+    depends_on:
+      - redis
+      - celery_worker
+    environment:
+      - DATABASE_URL=postgresql://chem_user:chem_password@postgres:5432/chem_database
+      - REDIS_URL=redis://redis:6379/0
+    networks:
+      - default
+
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80"      # HTTP
+      - "443:443"    # HTTPS (оставим на будущее)
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro  # Монтируем конфиги
+      - ./static:/app/static:ro              # Для статических файлов (пока пусто)
+    depends_on:
+      - backend
+    networks:
+      - default
+
+volumes:   # Определяет именованные тома для хранения данных
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    driver: bridge
